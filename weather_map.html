@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Open Weather</title>
+	<meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+	<link href="https://api.mapbox.com/mapbox-gl-js/v2.4.1/mapbox-gl.css" rel="stylesheet">
+	<script src="https://api.mapbox.com/mapbox-gl-js/v2.4.1/mapbox-gl.js"></script>
+	<script src="js/keys.js"></script>
+	<link rel="stylesheet" href="css/weather_map.css">
+</head>
+<body>
+	<header id="top-bar">Weather App</header>
+	<div id="search-container">
+		Place
+		<form>
+			<input type="text" id="user-location-input">
+			<button id="location-search">Find</button>
+		</form>
+		<div id="location">
+
+		</div>
+	</div>
+	<div id="five-day-weather-card-box">
+
+	</div>
+	<div id="map"></div>
+
+<!-- Mapbox JS -->
+<script src='https://api.tiles.mapbox.com/mapbox-gl-js/v0.53.0/mapbox-gl.js'></script>
+<!-- Mapbox Geocoder Util Methods -->
+<script src="js/mapbox-geocoder-utils.js"></script>
+	<script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
+<script>
+	//code to handle crazy longitude values
+	function longitudeCorrection(lon){
+        if(lon > 180){
+            lon = ((lon * -1)+(2*(lon%180)));
+            console.log("corrected longitude: "+lon);
+            return lon;
+        } else if(lon < -180){
+            lon = ((lon *-1)+(2*(lon%180)));
+            console.log("corrected longitude: " + lon);
+            return lon;
+        }
+        return lon;
+	}
+	function displayLocationName(longitude, latitude){
+	    reverseGeocode({lng: longitude, lat: latitude}, MAPBOX_API_TOKEN).then(function (result){
+            $('#location').html('<strong>' + result + '</strong>');
+		});
+	}
+    function getAndDisplayWeatherData(longitude, latitude){
+        //map.setCenter({lng: longitude, lat: latitude});
+        map.easeTo({
+			center: [longitude,latitude],
+			pitch: 0,
+			bearing: 0,
+			duration: 2000
+		});
+        longitude = longitudeCorrection(longitude);
+        $.get('https://api.openweathermap.org/data/2.5/onecall', {
+            appid: OPEN_WEATHER_APP_ID,
+            lat: latitude,
+            lon: longitude,
+            units: 'imperial'
+        }).done(function(data) {
+            console.log(data);
+            var html = '';
+            for(let i =0; i < 5; i++){
+                let currentHtml = $('#five-day-weather-card-box').html();
+                //console.log("looping" + i + " " +currentHtml);
+                html += '<div class="weather-card">';
+                let date = new Date(data.daily[i].dt * 1000);
+
+                //adds date div
+                html += '<div class="date">' + (date.getFullYear() + "-"+ (date.getMonth()+1)+ '-' +date.getDate()) + '</div>'
+                //adds temperature div
+                html += '<div class="temp"><strong>' + (data.daily[i].temp.min + '</strong>/<strong>' + data.daily[i].temp.max) + ' °F</strong></div>'
+                //TODO: Get weather image in the weather div
+                //Adding weather description
+                html += '<div class="weather">' +'<img src="img/'+(data.daily[i].weather[0].icon) +'.png"  width="40" height="40" alt="">' + 'Weather: <strong>' + (data.daily[i].weather[0].description) + '</strong></div><hr>';
+                //adds humidity div
+                html += '<div class="humidity">Humidity: ' + ' <strong> ' + (data.daily[i].humidity) + '</strong></div><hr>';
+                //add wind
+                html += '<div class="wind">Wind: ' + '<strong> ' + data.daily[i].wind_speed + 'mph '
+                    + windCardinalDirection(data.daily[i].wind_deg) + '</strong></div><hr>';
+                //add pressure
+                html += '<div class="pressure">Pressure: ' + '<strong> ' + (data.daily[i].humidity) + ' millibars</strong></div>';
+                //close dayCard div
+                html += '</div>';
+
+            }
+            $('#five-day-weather-card-box').html(html);
+            //TODO: Populate Cards with data
+
+        }).fail(function(error) {
+            console.log(error);
+        });
+    }
+    mapboxgl.accessToken = MAPBOX_API_TOKEN;
+	//declaring map
+    var map = new mapboxgl.Map({
+        container: 'map',
+        style: 'mapbox://styles/mapbox/satellite-streets-v11', //this style sometimes displays poorly but I just love this view
+        zoom: 10
+    });
+    //declared marker so there's just one
+    var marker = new mapboxgl.Marker({
+        color: "#007bff",
+        draggable: true
+    });
+    map.on('click', function (e){
+        //console.log(e)
+        marker.setLngLat([e.lngLat.lng, e.lngLat.lat]);
+        marker.addTo(map);
+        displayLocationName(e.lngLat.lng, e.lngLat.lat);
+		getAndDisplayWeatherData(e.lngLat.lng, e.lngLat.lat);
+	});
+    marker.on('dragend',function (e){
+        console.log(e.target._lngLat);
+        displayLocationName(e.target._lngLat.lng, e.target._lngLat.lat);
+        getAndDisplayWeatherData(e.target._lngLat.lng, e.target._lngLat.lat);
+	});
+
+		//This whole block just sets it to start out over San Antonio
+    geocode("San Antonio, Texas", MAPBOX_API_TOKEN).then(function (result){
+
+        getAndDisplayWeatherData(result[0],result[1]);
+
+	});
+    // This function takes a number between 0 and 360 and returns a
+    // wind direction abbreviation. the MapBox API gives us a "wind degrees" datum
+    // this takes the "wind degrees" and converts it into a familiar abbreviation
+    function windCardinalDirection(degrees){
+        let cardinalDirection = '';
+        if ((degrees > 348.75 && degrees <= 360) || (degrees >=0 && degrees <= 11.25)){
+            cardinalDirection = "N";
+        } else if (degrees > 11.25 && degrees  <= 33.75) {
+            cardinalDirection = "NNE";
+        } else if (degrees > 33.75 && degrees <= 56.25) {
+            cardinalDirection = "NE";
+        } else if (degrees > 56.25 && degrees <= 78.75) {
+            cardinalDirection = "ENE";
+        } else if (degrees > 78.75 && degrees <= 101.25) {
+            cardinalDirection = "E";
+        } else if (degrees > 101.25 && degrees <= 123.75) {
+            cardinalDirection = "ESE";
+        } else if (degrees > 123.75 && degrees <= 146.25) {
+            cardinalDirection = "SE";
+        } else if (degrees > 146.25 && degrees <= 168.75) {
+            cardinalDirection = "SSE";
+        } else if (degrees > 168.75 && degrees <= 191.25) {
+            cardinalDirection = "S";
+        } else  if (degrees > 191.25 && degrees <= 213.75) {
+            cardinalDirection = "SSW";
+        } else if (degrees > 213.75 && degrees <= 236.25)  {
+            cardinalDirection = "SW";
+        } else if (degrees > 236.25 && degrees <= 258.75) {
+            cardinalDirection = "WSW";
+        } else if (degrees > 258.75 && degrees <= 281.25) {
+            cardinalDirection = "W";
+        } else if (degrees > 281.25 && degrees <= 303.75) {
+            cardinalDirection = "WNW";
+        } else if (degrees > 303.75 && degrees <= 326.25) {
+            cardinalDirection = "NW";
+        } else if (degrees > 326.75 && degrees <= 348.75) {
+            cardinalDirection = "NNW";
+        }
+        return cardinalDirection;
+    }
+
+	$('#location-search').on('click', function (e){
+	    e.preventDefault();
+        geocode(($('#user-location-input').val()), MAPBOX_API_TOKEN).then(function (result){
+            displayLocationName(result[0], result[1]);
+            marker.setLngLat([result[0],result[1]]);
+            getAndDisplayWeatherData(result[0],result[1]);
+
+        });
+	});
+
+</script>
+
+</body>
+</html>
